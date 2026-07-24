@@ -356,8 +356,8 @@ function Import-SachbearbeiterListe {
 
     foreach ($r in $rows) {
         # Spaltennamen tolerant beziehen (Header-Schreibweise kann variieren)
-        $vor  = (Get-Col $r @('Vorname'))  .Trim()
-        $nach = (Get-Col $r @('Nachname')) .Trim()
+        $vor  = (Get-Col $r @('Vorname')).Trim()
+        $nach = (Get-Col $r @('Nachname')).Trim()
         if (-not $vor -and -not $nach) { continue }   # leere Namenszeile -> skip
 
         $key = (ConvertTo-NormalizedName $vor) + '|' + (ConvertTo-NormalizedName $nach)
