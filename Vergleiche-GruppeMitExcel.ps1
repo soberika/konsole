@@ -93,6 +93,18 @@ function Get-MatchKey {
     return ($g.Trim() + '|' + $s.Trim())
 }
 
+# --- Soll-Datei lesen: CSV (ohne Modul) ODER XLSX ---
+function Import-SollRows {
+    param([string]$Path, [string]$WorksheetName)
+    $ext = [IO.Path]::GetExtension($Path).ToLowerInvariant()
+    if ($ext -eq '.csv') {
+        $firstLine = Get-Content -LiteralPath $Path -TotalCount 1 -Encoding UTF8
+        $delim = if ($firstLine -match ';') { ';' } else { ',' }
+        return Import-Csv -LiteralPath $Path -Delimiter $delim -Encoding UTF8
+    }
+    return Import-XlsxRows -Path $Path -WorksheetName $WorksheetName
+}
+
 # --- Excel lesen (ImportExcel bevorzugt, sonst COM) ---
 function Import-XlsxRows {
     param([string]$Path, [string]$WorksheetName)
@@ -146,7 +158,7 @@ try {
 
     # --- SOLL: Personen aus Excel (nur Zeilen mit Namen, dedupliziert) ---
     $soll = @{}
-    foreach ($r in (Import-XlsxRows -Path $ExcelPath -WorksheetName $WorksheetName)) {
+    foreach ($r in (Import-SollRows -Path $ExcelPath -WorksheetName $WorksheetName)) {
         $vn = Get-Col $r @('Vorname', 'GivenName')
         $nn = Get-Col $r @('Nachname', 'Surname', 'Name')
         if (-not $vn -and -not $nn) { continue }
