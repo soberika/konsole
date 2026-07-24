@@ -28,6 +28,20 @@ versehentlich etwas im Active Directory geändert wird:
 Install-Module ImportExcel -Scope CurrentUser
 ```
 
+**RSAT / `ActiveDirectory`-Modul installieren** (falls `Das ... Modul "ActiveDirectory"
+wurde nicht geladen` erscheint):
+
+```powershell
+# Windows 10/11 (als Administrator):
+Add-WindowsCapability -Online -Name "Rsat.ActiveDirectory.DS-LDS.Tools~~~~0.0.1.0"
+
+# Windows Server:
+Install-WindowsFeature -Name RSAT-AD-PowerShell
+```
+
+Zum reinen Ausprobieren **ohne** AD/RSAT gibt es den Offline-Demomodus
+`-DemoNoAd` (siehe unten).
+
 ---
 
 ## Ablauf
@@ -78,6 +92,7 @@ Nur das **Apply-Skript** verändert das AD.
 | `-Server` | | Domain Controller / Domäne, z. B. `kreis-meissen.de` |
 | `-OutputDir` | | Zielordner für Report/CSV/Apply/Log. Standard: `Sync-Output\` neben dem Skript |
 | `-LogPath`, `-HtmlReportPath`, `-ApplyScriptPath`, `-CsvPath` | | Optional einzelne Ausgabepfade überschreiben |
+| `-DemoNoAd` | | Offline-Demomodus ohne AD/RSAT (AD wird simuliert). Nur zum Ausprobieren, nicht produktiv. |
 
 Volle Hilfe: `Get-Help .\Sync-JobcenterGroup.ps1 -Full`
 
@@ -128,6 +143,21 @@ kompletten Pipeline:
 
 > Die erfundenen Namen erscheinen gegen ein echtes AD als „kein Treffer“ – das ist
 > gewollt. Für einen echten Match-Test einige Namen durch reale Test-Benutzer ersetzen.
+
+### Ganz ohne AD/RSAT testen (`-DemoNoAd`)
+
+Wenn (noch) kein `ActiveDirectory`-Modul installiert ist, lässt sich die komplette
+Pipeline offline durchspielen. Das AD wird dann **simuliert** (synthetischer Stand
+aus der Excel), damit Report + Apply-Skript entstehen und angesehen werden können:
+
+```powershell
+.\Sync-JobcenterGroup.ps1 -ExcelPath .\Source\Beispiel_SachbearbeiterListe.xlsx `
+    -WorksheetName "Leistung" -DemoNoAd
+```
+
+> **Nur zum Ausprobieren.** Das im Demomodus erzeugte `Apply_*.ps1` enthält
+> synthetische DNs und trägt einen deutlichen Warnhinweis – niemals gegen ein
+> echtes AD ausführen.
 
 ---
 
