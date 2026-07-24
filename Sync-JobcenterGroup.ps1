@@ -58,6 +58,13 @@
 .PARAMETER CsvPath
     Optionaler expliziter Pfad fuer den CSV-Export.
 
+.PARAMETER DemoNoAd
+    OFFLINE-DEMOMODUS zum Testen OHNE Active Directory (kein RSAT noetig).
+    Es wird KEINE echte AD-Abfrage gemacht; stattdessen wird ein synthetischer
+    AD-Stand aus der Excel simuliert, damit Report + Apply-Skript erzeugt und
+    angesehen werden koennen. NUR zum Ausprobieren der Pipeline - niemals
+    produktiv verwenden.
+
 .EXAMPLE
     # Analyse (Standard) - liest nur, erzeugt Report + Apply-Skript:
     .\Sync-JobcenterGroup.ps1 -ExcelPath .\Source\Liste_SachbearbeiterLeistung.xlsx
@@ -117,7 +124,10 @@ param(
     [string]$ApplyScriptPath,
 
     [Parameter(Mandatory = $false)]
-    [string]$CsvPath
+    [string]$CsvPath,
+
+    [Parameter(Mandatory = $false)]
+    [switch]$DemoNoAd
 )
 
 # --------------------------------------------------------------------------
@@ -424,16 +434,11 @@ function Import-ExcelViaCom {
 }
 
 # --------------------------------------------------------------------------
-# 2) AD-Index aufbauen: alle AKTIVEN User einmal laden und normalisiert
-#    indizieren. Das ist schneller als pro Person eine LDAP-Abfrage und
-#    erlaubt Fuzzy-/Fallback-Matching im Speicher.
+# 2) AD-Index aufbauen: eine (bereits geladene) Benutzerliste normalisiert
+#    indizieren. Das erlaubt Fuzzy-/Fallback-Matching im Speicher.
 # --------------------------------------------------------------------------
 function Build-AdUserIndex {
-    param([hashtable]$AdParams)
-
-    Write-Log "Lade aktive AD-Benutzer (givenName, sn, displayName, cn) ..." 'INFO'
-    $users = Get-ADUser -Filter 'Enabled -eq $true' `
-                        -Properties givenName, sn, displayName, cn @AdParams
+    param([object[]]$Users)
 
     # Index: normalisierter Schluessel -> Liste von Usern (Kollisionen moeglich)
     $byGivenSn      = @{}   # "given|sn"
@@ -452,7 +457,7 @@ function Build-AdUserIndex {
         }
     }
 
-    foreach ($u in $users) {
+    foreach ($u in $Users) {
         $gn = ConvertTo-NormalizedName $u.givenName
         $sn = ConvertTo-NormalizedName $u.sn
         if ($gn -and $sn) { & $addTo $byGivenSn "$gn|$sn" $u }
@@ -460,12 +465,63 @@ function Build-AdUserIndex {
         & $addTo $byCn      (ConvertTo-NormalizedName $u.cn)          $u
     }
 
-    Write-Log ("AD-Index aufgebaut: {0} aktive Benutzer." -f $users.Count) 'OK'
+    Write-Log ("AD-Index aufgebaut: {0} aktive Benutzer." -f $Users.Count) 'OK'
     return [pscustomobject]@{
         ByGivenSn = $byGivenSn
         ByDisplay = $byDisplay
         ByCn      = $byCn
     }
+}
+
+# --------------------------------------------------------------------------
+# 2b) OFFLINE-DEMO: synthetischen AD-Stand aus der Excel erzeugen (kein RSAT).
+#     Erlaubt das Ausprobieren der Pipeline ohne echtes Active Directory.
+# --------------------------------------------------------------------------
+function Get-DemoAdData {
+    param([object[]]$Persons)
+
+    # sAMAccountName im Stil vorname.nachname (nur jeweils erstes Namens-Token)
+    function _demoSam([string]$vn, [string]$nn) {
+        $g = ((ConvertTo-NormalizedName $vn) -split ' ')[0]
+        $s = ((ConvertTo-NormalizedName $nn) -split ' ')[0]
+        return "$g.$s"
+    }
+
+    # Fuer jede Excel-Person einen aktiven "AD-User" erzeugen
+    $users = New-Object System.Collections.Generic.List[object]
+    foreach ($p in $Persons) {
+        $users.Add([pscustomobject]@{
+            SamAccountName    = (_demoSam $p.Vorname $p.Nachname)
+            givenName         = $p.Vorname
+            sn                = $p.Nachname
+            displayName       = "$($p.Vorname) $($p.Nachname)"
+            cn                = "$($p.Vorname) $($p.Nachname)"
+            DistinguishedName = "CN=$($p.Vorname) $($p.Nachname),OU=Demo,DC=demo,DC=local"
+            Enabled           = $true
+        })
+    }
+
+    # Synthetischer Ist-Stand der Gruppe:
+    #   - erste Haelfte der Personen ist bereits "drin"  -> bleibt
+    #   - zweite Haelfte fehlt                            -> wird hinzugefuegt
+    #   - 2 Alt-Konten, die NICHT in der Excel stehen     -> werden entfernt
+    $half    = [math]::Floor($users.Count / 2)
+    $current = New-Object System.Collections.Generic.List[object]
+    for ($i = 0; $i -lt $half; $i++) {
+        $u = $users[$i]
+        $current.Add([pscustomobject]@{
+            Name = $u.displayName; SamAccountName = $u.SamAccountName
+            DistinguishedName = $u.DistinguishedName; objectClass = 'user'
+        })
+    }
+    foreach ($alt in @(@('Petra', 'Altmann'), @('Uwe', 'Seidel'))) {
+        $current.Add([pscustomobject]@{
+            Name = "$($alt[0]) $($alt[1])"; SamAccountName = (_demoSam $alt[0] $alt[1])
+            DistinguishedName = "CN=$($alt[0]) $($alt[1]),OU=Demo,DC=demo,DC=local"; objectClass = 'user'
+        })
+    }
+
+    return [pscustomobject]@{ Users = $users.ToArray(); CurrentMembers = $current.ToArray() }
 }
 
 # --------------------------------------------------------------------------
@@ -651,11 +707,16 @@ function Export-AnalyseCsv {
 function New-ApplyScript {
     param(
         [string]$Path, [string]$GroupName, [string]$Server, [string]$ExcelPath,
-        [object[]]$ToAdd, [object[]]$ToRemove, [object[]]$Ambiguous, [object[]]$NotFound
+        [object[]]$ToAdd, [object[]]$ToRemove, [object[]]$Ambiguous, [object[]]$NotFound,
+        [switch]$Demo
     )
 
     # Kleiner Helfer: Strings fuer die Einbettung in einfachen Anfuehrungszeichen absichern
     function _q([string]$s) { "'" + ($s -replace "'", "''") + "'" }
+
+    $demoBanner = if ($Demo) {
+        "  !! ACHTUNG: Im OFFLINE-DEMOMODUS erzeugt - enthaelt SYNTHETISCHE DNs !!$([Environment]::NewLine)  !! NICHT gegen ein echtes AD ausfuehren! Nur zur Veranschaulichung.        !!$([Environment]::NewLine)  ----------------------------------------------------------------------------$([Environment]::NewLine)"
+    } else { '' }
 
     $sb = New-Object System.Text.StringBuilder
     $nl = "`r`n"
@@ -664,7 +725,7 @@ function New-ApplyScript {
   ============================================================================
   AUTOMATISCH GENERIERTES AUSFUEHRUNGSSKRIPT  -  BITTE VOR DEM START PRUEFEN!
   ----------------------------------------------------------------------------
-  Erzeugt am : $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
+$demoBanner  Erzeugt am : $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
   Gruppe     : $GroupName
   Grundlage  : $ExcelPath
   ----------------------------------------------------------------------------
@@ -746,23 +807,46 @@ try {
     Write-Log "Excel: $ExcelPath" 'INFO'
     Write-Log "MODUS: ANALYSE (nur lesend) - es wird NICHTS im AD geaendert." 'WARN'
 
-    # AD-Modul laden
-    Import-Module ActiveDirectory -ErrorAction Stop
-
     # Optionalen Server-Parameter fuer alle AD-Cmdlets vorbereiten
     $adParams = @{}
     if ($Server) { $adParams['Server'] = $Server }
+
+    if ($DemoNoAd) {
+        Write-Log "OFFLINE-DEMOMODUS aktiv (-DemoNoAd): AD wird NUR simuliert!" 'WARN'
+    }
+    else {
+        # AD-Modul laden (nur im echten Modus noetig)
+        Import-Module ActiveDirectory -ErrorAction Stop
+    }
 
     # --- Excel einlesen (inkl. Auswahl des Arbeitsblatts) ---
     $persons = Import-SachbearbeiterListe -Path $ExcelPath -WorksheetName $WorksheetName
     Write-Log ("Excel gelesen: {0} eindeutige Personen." -f $persons.Count) 'OK'
 
-    # --- Zielgruppe pruefen ---
-    $group = Get-ADGroup -Identity $GroupName -Properties distinguishedName @adParams
-    Write-Log "Zielgruppe gefunden: $($group.DistinguishedName)" 'OK'
+    # --- Benutzerliste + Ist-Mitglieder beschaffen (echt oder simuliert) ---
+    if ($DemoNoAd) {
+        $demo           = Get-DemoAdData -Persons $persons
+        $adUsers        = $demo.Users
+        $currentMembers = $demo.CurrentMembers
+        Write-Log ("DEMO: {0} synthetische Benutzer erzeugt." -f $adUsers.Count) 'INFO'
+    }
+    else {
+        # Zielgruppe pruefen
+        $group = Get-ADGroup -Identity $GroupName -Properties distinguishedName @adParams
+        Write-Log "Zielgruppe gefunden: $($group.DistinguishedName)" 'OK'
+
+        # Aktive Benutzer laden
+        Write-Log "Lade aktive AD-Benutzer (givenName, sn, displayName, cn) ..." 'INFO'
+        $adUsers = Get-ADUser -Filter 'Enabled -eq $true' `
+                              -Properties givenName, sn, displayName, cn @adParams
+
+        # Ist-Zustand: NUR direkte Benutzer-Mitglieder (nested groups ausschliessen)
+        $currentMembers = Get-ADGroupMember -Identity $GroupName @adParams |
+                          Where-Object { $_.objectClass -eq 'user' }
+    }
 
     # --- AD-Index aufbauen & matchen ---
-    $index    = Build-AdUserIndex -AdParams $adParams
+    $index    = Build-AdUserIndex -Users $adUsers
     $matched  = New-Object System.Collections.Generic.List[object]
     $ambiguous= New-Object System.Collections.Generic.List[object]
     $notFound = New-Object System.Collections.Generic.List[object]
@@ -794,14 +878,11 @@ try {
         $desiredUsers[$m.User.SamAccountName] = $m
     }
 
-    # --- Ist-Zustand: NUR direkte Benutzer-Mitglieder der Gruppe ---
-    #     Verschachtelte Gruppen bewusst ausschliessen (objectClass -eq 'user').
-    $currentMembers = Get-ADGroupMember -Identity $GroupName @adParams |
-                      Where-Object { $_.objectClass -eq 'user' }
+    # --- Ist-Zustand indizieren (oben bereits echt oder simuliert geladen) ---
     $currentSams = @{}
     foreach ($cm in $currentMembers) { $currentSams[$cm.SamAccountName] = $cm }
 
-    Write-Log ("Direkte User-Mitglieder aktuell: {0}" -f $currentMembers.Count) 'INFO'
+    Write-Log ("Direkte User-Mitglieder aktuell: {0}" -f @($currentMembers).Count) 'INFO'
 
     # --- Differenzen bilden ---
     $toAdd    = New-Object System.Collections.Generic.List[object]  # match-Objekte
@@ -821,7 +902,7 @@ try {
     # Generiertes Ausfuehrungsskript (die eigentliche Schreiblogik zum "Absegnen")
     New-ApplyScript -Path $ApplyScriptPath -GroupName $GroupName -Server $Server -ExcelPath $ExcelPath `
         -ToAdd $toAdd.ToArray() -ToRemove $toRemove.ToArray() `
-        -Ambiguous $ambiguous.ToArray() -NotFound $notFound.ToArray()
+        -Ambiguous $ambiguous.ToArray() -NotFound $notFound.ToArray() -Demo:$DemoNoAd
 
     # HTML-Report (Vorher/Nachher)
     New-HtmlReport -Path $HtmlReportPath -GroupName $GroupName -DryRun $true `
@@ -844,6 +925,9 @@ try {
     Write-Log ("Mehrdeutig            : {0}" -f $ambiguous.Count)    'WARN'
     Write-Log ("Nicht gefunden        : {0}" -f $notFound.Count)     'WARN'
     Write-Log "==================================================================" 'INFO'
+    if ($DemoNoAd) {
+        Write-Log "OFFLINE-DEMOMODUS: Zahlen/DNs sind SIMULIERT - Apply-Skript NICHT produktiv nutzen!" 'WARN'
+    }
     Write-Log "Es wurde NICHTS im AD geaendert (reine Analyse)." 'WARN'
     Write-Log "" 'INFO'
     Write-Log "NAECHSTE SCHRITTE:" 'INFO'
