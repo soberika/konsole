@@ -1,4 +1,70 @@
-# Sync-JobcenterGroup
+# Jobcenter – AD-Abgleich
+
+Zwei Wege, je nachdem ob du eine Live-Verbindung zum Active Directory hast:
+
+| Skript | Wann | AD-Zugriff |
+|--------|------|-----------|
+| **`Abgleich-SachbearbeiterAD.ps1`** | Du hast **kein** RSAT/AD am Rechner. Du lieferst Excel + AD-Export als Datei, bekommst eine Ergebnisliste. | **keiner** (rein dateibasiert) |
+| **`Sync-JobcenterGroup.ps1`** | Du hast RSAT/AD und willst die Gruppe direkt abgleichen (Analyse → Apply-Skript). | live |
+
+> Wenn dein Rechner das Modul `ActiveDirectory` nicht laden kann
+> (`... Modul "ActiveDirectory" wurde nicht geladen`), nimm **`Abgleich-SachbearbeiterAD.ps1`**.
+
+---
+
+## `Abgleich-SachbearbeiterAD.ps1` – Offline-Abgleich (kein AD nötig)
+
+Du gibst zwei Dateien rein, bekommst **eine Ergebnisliste** heraus, deren Lücken du
+noch manuell füllst.
+
+**Eingaben**
+1. Sachbearbeiter-Excel mit Spalten `Vorname`, `Nachname` (Quelle der Wahrheit).
+2. AD-Export (**CSV oder XLSX**) aller AD-Benutzer mit `Vorname`, `Nachname`,
+   `sAMAccountName`. Spaltennamen werden automatisch erkannt (Aliase wie
+   `GivenName`/`Surname`/`SamAccountName` etc.), notfalls per Parameter überschreibbar.
+
+**Ausgabe** – eine CSV (und, falls `ImportExcel` vorhanden, zusätzlich XLSX):
+
+| Vorname | Nachname | Status | sAMAccountName | Kandidaten | Hinweis |
+|---------|----------|--------|----------------|------------|---------|
+| … | … | `GEFUNDEN` | `erika.mustermann` | | |
+| … | … | `MEHRDEUTIG` | *(leer)* | `thomas.mueller \| thomas.mueller2` | bitte wählen |
+| … | … | `NICHT_GEFUNDEN` | *(leer)* | | manuell ergänzen |
+
+Die Zeilen mit leerem `sAMAccountName` sind genau die, die du noch ergänzt.
+Offene Fälle stehen oben (Sortierung nach Status).
+
+**Aufruf**
+
+```powershell
+.\Abgleich-SachbearbeiterAD.ps1 `
+    -ExcelPath  .\Source\Liste_SachbearbeiterLeistung.xlsx `
+    -AdListPath .\Source\AD_Export.csv
+```
+
+**Sofort testen** (mit mitgelieferten Beispieldateien, kein AD nötig):
+
+```powershell
+.\Abgleich-SachbearbeiterAD.ps1 `
+    -ExcelPath  .\Source\Beispiel_SachbearbeiterListe.xlsx -WorksheetName "Leistung" `
+    -AdListPath .\Source\Beispiel_AD_Export.csv
+```
+
+Erwartetes Ergebnis der Beispieldaten: **8 gefunden, 1 mehrdeutig** (Thomas Müller,
+zwei Konten), **1 nicht gefunden** (Johanna Zäunig).
+
+**Wie komme ich an den AD-Export?** Wenn jemand mit AD-Zugriff kurz Folgendes laufen
+lässt (einmalig, nur Lesen), bekommst du die passende CSV:
+
+```powershell
+Get-ADUser -Filter 'Enabled -eq $true' -Properties GivenName,Surname,DisplayName |
+    Select-Object GivenName,Surname,SamAccountName,DisplayName |
+    Export-Csv .\AD_Export.csv -NoTypeInformation -Encoding UTF8 -Delimiter ';'
+```
+
+---
+
+## `Sync-JobcenterGroup.ps1` – Live-Sync (mit AD/RSAT)
 
 Synchronisiert eine AD-Sicherheitsgruppe (z. B. **`Liste_Jobcenter_Leistung`**) anhand
 einer Excel-Liste der aktuellen Sachbearbeiter. Die Excel-Datei ist die **einzige
