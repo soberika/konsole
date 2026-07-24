@@ -1,0 +1,406 @@
+<title>Gruppen-Abgleich · Jobcenter</title>
+<style>
+  :root {
+    --bg: #eef1f6; --surface: #ffffff; --surface-2: #f6f8fb; --border: #dde3ec;
+    --text: #1e2733; --muted: #64748b; --accent: #2f6bd6; --accent-weak: #e5eefc;
+    --add-bg: #e4f4ea; --add-fg: #16794a; --add-line: #b7e2c6;
+    --rem-bg: #fde7e9; --rem-fg: #b32133; --rem-line: #f4c2c8;
+    --warn-bg: #fbefd3; --warn-fg: #97701a; --warn-line: #eeddb4;
+    --keep-fg: #5b6675;
+    --shadow: 0 1px 2px rgba(23,37,58,.06), 0 8px 24px rgba(23,37,58,.06);
+    --radius: 12px;
+    --mono: ui-monospace, "SFMono-Regular", "Cascadia Code", Consolas, monospace;
+    --sans: ui-sans-serif, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f141b; --surface: #161d27; --surface-2: #1b232f; --border: #2a3644;
+      --text: #e6ebf2; --muted: #94a2b4; --accent: #6098f2; --accent-weak: #1c2b42;
+      --add-bg: #14301f; --add-fg: #6cd39a; --add-line: #235437;
+      --rem-bg: #341419; --rem-fg: #f2909c; --rem-line: #5a2730;
+      --warn-bg: #31280f; --warn-fg: #e2bf72; --warn-line: #524219;
+      --keep-fg: #9aa7b6;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 28px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="light"] {
+    --bg: #eef1f6; --surface: #ffffff; --surface-2: #f6f8fb; --border: #dde3ec;
+    --text: #1e2733; --muted: #64748b; --accent: #2f6bd6; --accent-weak: #e5eefc;
+    --add-bg: #e4f4ea; --add-fg: #16794a; --add-line: #b7e2c6;
+    --rem-bg: #fde7e9; --rem-fg: #b32133; --rem-line: #f4c2c8;
+    --warn-bg: #fbefd3; --warn-fg: #97701a; --warn-line: #eeddb4;
+    --keep-fg: #5b6675;
+    --shadow: 0 1px 2px rgba(23,37,58,.06), 0 8px 24px rgba(23,37,58,.06);
+  }
+  :root[data-theme="dark"] {
+    --bg: #0f141b; --surface: #161d27; --surface-2: #1b232f; --border: #2a3644;
+    --text: #e6ebf2; --muted: #94a2b4; --accent: #6098f2; --accent-weak: #1c2b42;
+    --add-bg: #14301f; --add-fg: #6cd39a; --add-line: #235437;
+    --rem-bg: #341419; --rem-fg: #f2909c; --rem-line: #5a2730;
+    --warn-bg: #31280f; --warn-fg: #e2bf72; --warn-line: #524219;
+    --keep-fg: #9aa7b6;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 28px rgba(0,0,0,.35);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: var(--sans); line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1140px; margin: 0 auto; padding: 28px 20px 72px; }
+
+  header.top { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 6px; }
+  h1 { font-size: 25px; letter-spacing: -.02em; margin: 0 0 4px; text-wrap: balance; }
+  .lead { color: var(--muted); margin: 0; font-size: 14.5px; max-width: 64ch; }
+  .eyebrow { text-transform: uppercase; letter-spacing: .11em; font-size: 11.5px; font-weight: 700; color: var(--accent); margin: 0 0 8px; }
+
+  .theme-toggle {
+    flex: none; border: 1px solid var(--border); background: var(--surface); color: var(--muted);
+    border-radius: 999px; padding: 7px 13px; font: inherit; font-size: 13px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 7px;
+  }
+  .theme-toggle:hover { color: var(--text); border-color: var(--accent); }
+
+  .grid-in { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 22px; }
+  @media (max-width: 780px) { .grid-in { grid-template-columns: 1fr; } }
+
+  .field { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; display: flex; flex-direction: column; }
+  .field > .head { padding: 13px 16px 11px; border-bottom: 1px solid var(--border); }
+  .field .num { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 6px; background: var(--accent-weak); color: var(--accent); font-size: 12px; font-weight: 700; margin-right: 8px; vertical-align: -3px; }
+  .field label { font-weight: 650; font-size: 14.5px; }
+  .field .hint { color: var(--muted); font-size: 12.5px; margin-top: 3px; }
+  textarea {
+    border: 0; outline: 0; resize: vertical; width: 100%; min-height: 200px;
+    padding: 13px 16px; background: transparent; color: var(--text);
+    font-family: var(--mono); font-size: 12.5px; line-height: 1.5;
+    tab-size: 4;
+  }
+  textarea::placeholder { color: var(--muted); opacity: .7; }
+  textarea:focus-visible { box-shadow: inset 0 0 0 2px var(--accent); border-radius: 0 0 var(--radius) var(--radius); }
+
+  .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 18px; }
+  button.btn {
+    font: inherit; cursor: pointer; border-radius: 9px; padding: 11px 20px; font-weight: 650; font-size: 14.5px;
+    border: 1px solid var(--accent); background: var(--accent); color: #fff;
+    display: inline-flex; align-items: center; gap: 8px; transition: filter .12s ease;
+  }
+  button.btn:hover { filter: brightness(1.06); }
+  button.btn.ghost { background: var(--surface); color: var(--text); border-color: var(--border); }
+  button.btn.ghost:hover { border-color: var(--accent); color: var(--accent); filter: none; }
+  button.btn:focus-visible, .copy:focus-visible, .theme-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .sep { flex: 1; }
+  .err { color: var(--rem-fg); font-size: 13.5px; }
+
+  /* Results */
+  .results { margin-top: 30px; }
+  .results[hidden] { display: none; }
+  .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  @media (max-width: 640px) { .tiles { grid-template-columns: repeat(2, 1fr); } }
+  .tile { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 15px 16px; box-shadow: var(--shadow); position: relative; }
+  .tile .n { font-size: 30px; font-weight: 720; letter-spacing: -.02em; font-variant-numeric: tabular-nums; line-height: 1; }
+  .tile .l { font-size: 12.5px; color: var(--muted); margin-top: 6px; text-transform: uppercase; letter-spacing: .05em; }
+  .tile.add { border-top: 3px solid var(--add-fg); } .tile.add .n { color: var(--add-fg); }
+  .tile.rem { border-top: 3px solid var(--rem-fg); } .tile.rem .n { color: var(--rem-fg); }
+  .tile.keep .n { color: var(--keep-fg); }
+  .tile.warn { border-top: 3px solid var(--warn-fg); } .tile.warn .n { color: var(--warn-fg); }
+
+  .panels { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+  @media (max-width: 780px) { .panels { grid-template-columns: 1fr; } }
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+  .panel > .phead { display: flex; align-items: center; gap: 10px; padding: 13px 16px; border-bottom: 1px solid var(--border); }
+  .panel .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  .panel.add .dot { background: var(--add-fg); } .panel.rem .dot { background: var(--rem-fg); }
+  .panel .ptitle { font-weight: 650; font-size: 14.5px; }
+  .panel .pcount { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .copy { margin-left: auto; font: inherit; font-size: 12.5px; cursor: pointer; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); padding: 6px 11px; border-radius: 7px; display: inline-flex; gap: 6px; align-items: center; }
+  .copy:hover { border-color: var(--accent); color: var(--accent); }
+  .list { list-style: none; margin: 0; padding: 6px; max-height: 340px; overflow-y: auto; }
+  .list li { padding: 8px 11px; border-radius: 7px; font-size: 14px; display: flex; align-items: baseline; gap: 9px; }
+  .list li:nth-child(odd) { background: var(--surface-2); }
+  .list li .mark { font-weight: 700; font-size: 12px; width: 15px; flex: none; text-align: center; }
+  .panel.add .mark { color: var(--add-fg); } .panel.rem .mark { color: var(--rem-fg); }
+  .list li .sn { font-weight: 600; }
+  .list li .vn { color: var(--muted); }
+  .empty { padding: 22px 16px; color: var(--muted); font-size: 13.5px; font-style: italic; text-align: center; }
+
+  .extra { margin-top: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 780px) { .extra { grid-template-columns: 1fr; } }
+  details.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+  details.card > summary { cursor: pointer; padding: 12px 16px; font-weight: 600; font-size: 14px; list-style: none; display: flex; align-items: center; gap: 8px; }
+  details.card > summary::-webkit-details-marker { display: none; }
+  details.card > summary .chev { transition: transform .15s ease; color: var(--muted); }
+  details.card[open] > summary .chev { transform: rotate(90deg); }
+  details.card .body { padding: 4px 8px 10px; }
+  .taglist { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 10px 12px; }
+  .tag { font-size: 12.5px; padding: 4px 9px; border-radius: 999px; background: var(--warn-bg); color: var(--warn-fg); border: 1px solid var(--warn-line); font-family: var(--mono); }
+
+  .note { margin-top: 26px; font-size: 12.5px; color: var(--muted); border-top: 1px solid var(--border); padding-top: 14px; }
+  .note b { color: var(--text); font-weight: 620; }
+
+  .toast { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(20px); opacity: 0; background: var(--text); color: var(--bg); padding: 10px 18px; border-radius: 999px; font-size: 13.5px; font-weight: 600; pointer-events: none; transition: opacity .2s ease, transform .2s ease; z-index: 10; }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <p class="eyebrow">Jobcenter · Benutzergruppen</p>
+      <h1>Gruppen-Abgleich</h1>
+      <p class="lead">Oben die <b>Soll-Liste</b> (Sachbearbeiter, direkt aus der Tabelle kopiert), unten den <b>Ist-Stand</b> der Gruppe (aus dem Benutzergruppen-Tool). Ein Klick zeigt, wer <b>hinzukommt</b> und wer <b>raus muss</b>. Nichts verlässt deinen Browser.</p>
+    </div>
+    <button class="theme-toggle" id="themeBtn" type="button" aria-label="Hell/Dunkel umschalten"><span id="themeIcon">◐</span><span id="themeLbl">Theme</span></button>
+  </header>
+
+  <div class="grid-in">
+    <div class="field">
+      <div class="head">
+        <label for="soll"><span class="num">1</span>Soll — Sachbearbeiter-Liste</label>
+        <div class="hint">Ganze Tabelle einfügen (mit Kopf­zeile, Tabs, Mehrfachzeilen). Nur Zeilen mit Vor- und Nachname zählen.</div>
+      </div>
+      <textarea id="soll" spellcheck="false" placeholder="Vorname&#9;Nachname&#9;Funktion&#9;…&#10;Kati&#9;Ackermann&#9;SB Leistungsgewährung&#9;Coswig Mitte (2202)&#10;A - L&#10;GBO - Team 2&#9;4212&#9;C 0.36&#9;RBL …"></textarea>
+    </div>
+    <div class="field">
+      <div class="head">
+        <label for="ist"><span class="num">2</span>Ist — aktuelle Gruppen­mitglieder</label>
+        <div class="hint">Liste aus dem Tool einfügen (Format „Nachname, Vorname“). Gruppen wie <span style="font-family:var(--mono)">Liste_*</span> / <span style="font-family:var(--mono)">JC.*</span> werden ignoriert.</div>
+      </div>
+      <textarea id="ist" spellcheck="false" placeholder="Liste_Jobcenter_Leistung&#10;Anzahl Einträge: 82 …&#10;Ackermann, Kati&#10;Adam, Ina&#10;…"></textarea>
+    </div>
+  </div>
+
+  <div class="actions">
+    <button class="btn" id="run" type="button">Vergleichen</button>
+    <button class="btn ghost" id="demo" type="button">Beispiel laden</button>
+    <button class="btn ghost" id="clear" type="button">Leeren</button>
+    <span class="sep"></span>
+    <span class="err" id="err" role="status"></span>
+  </div>
+
+  <section class="results" id="results" hidden aria-live="polite">
+    <div class="tiles">
+      <div class="tile add"><div class="n" id="tAdd">0</div><div class="l">Hinzufügen</div></div>
+      <div class="tile rem"><div class="n" id="tRem">0</div><div class="l">Entfernen</div></div>
+      <div class="tile keep"><div class="n" id="tKeep">0</div><div class="l">Bleibt</div></div>
+      <div class="tile warn"><div class="n" id="tIgn">0</div><div class="l">Ignoriert</div></div>
+    </div>
+
+    <div class="panels">
+      <div class="panel add">
+        <div class="phead"><span class="dot"></span><span class="ptitle">Hinzufügen</span><span class="pcount" id="cAdd">0</span>
+          <button class="copy" id="copyAdd" type="button">⧉ Namen kopieren</button></div>
+        <ul class="list" id="listAdd"></ul>
+      </div>
+      <div class="panel rem">
+        <div class="phead"><span class="dot"></span><span class="ptitle">Entfernen</span><span class="pcount" id="cRem">0</span>
+          <button class="copy" id="copyRem" type="button">⧉ Namen kopieren</button></div>
+        <ul class="list" id="listRem"></ul>
+      </div>
+    </div>
+
+    <div class="extra">
+      <details class="card">
+        <summary><span class="chev">▶</span>Bleibt unverändert <span class="pcount" id="cKeep" style="margin-left:auto"></span></summary>
+        <ul class="list" id="listKeep"></ul>
+      </details>
+      <details class="card">
+        <summary><span class="chev">▶</span>Ignoriert (Gruppen / Funktionskonten) <span class="pcount" id="cIgn" style="margin-left:auto"></span></summary>
+        <div class="taglist" id="listIgn"></div>
+      </details>
+    </div>
+
+    <p class="note"><b>Namensbasierter Abgleich.</b> Umlaute, „genannt“-Namen und Zähl-Dubletten wie <span style="font-family:var(--mono)">Schmidt1</span> werden automatisch zusammengeführt. Bei 5+ Änderungen lohnt eine kurze Sichtprüfung — steht jemand fälschlich bei „hinzufügen“ <i>und</i> „entfernen“, ist es meist eine abweichende Schreibweise.</p>
+  </section>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---- Theme ----
+  var root = document.documentElement;
+  var tBtn = document.getElementById('themeBtn');
+  var tLbl = document.getElementById('themeLbl');
+  tBtn.addEventListener('click', function () {
+    var cur = root.getAttribute('data-theme');
+    if (!cur) cur = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    var next = cur === 'dark' ? 'light' : 'dark';
+    root.setAttribute('data-theme', next);
+    tLbl.textContent = next === 'dark' ? 'Dunkel' : 'Hell';
+  });
+
+  // ---- Normalisierung ----
+  function norm(s) {
+    if (!s) return '';
+    s = s.trim().toLowerCase();
+    s = s.replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss');
+    s = s.normalize('NFD').replace(/[̀-ͯ]/g, '');
+    s = s.replace(/[^a-z0-9]+/g, ' ').trim();
+    return s.replace(/\s+/g, ' ');
+  }
+  function stripDigits(s) {
+    return s.split(' ').map(function (t) { return t.replace(/\d+$/, ''); }).join(' ').trim();
+  }
+  function keyOf(vn, nn) { return stripDigits(norm(vn)) + '|' + stripDigits(norm(nn)); }
+
+  var nameish = /^[\p{L}][\p{L}\s.\-']*$/u;
+  var hasDigit = /\d/;
+
+  // ---- Parser: Soll (Tabellen-Paste) ----
+  function parseSoll(text) {
+    var map = new Map();
+    text.split(/\r?\n/).forEach(function (raw) {
+      if (raw.indexOf('\t') === -1) return;            // Personenzeile hat Tabs
+      var p = raw.split('\t');
+      if (p.length < 2) return;
+      var vn = p[0].trim(), nn = p[1].trim();
+      if (!vn || !nn) return;
+      if (vn.toLowerCase() === 'vorname' || nn.toLowerCase() === 'nachname') return; // Kopfzeile
+      if (hasDigit.test(vn) || hasDigit.test(nn)) return;   // Team/Tel-Zeilen raus
+      if (!nameish.test(vn) || !nameish.test(nn)) return;
+      var k = keyOf(vn, nn);
+      if (!map.has(k)) map.set(k, { vorname: vn, nachname: nn });
+    });
+    return map;
+  }
+
+  // ---- Parser: Ist (Nachname, Vorname) ----
+  var groupRe = [/^Liste_/i, /^JC\./i, /_Team/i, /Springer/i, /Teamleiter/i, /Rechtsanwendung/i, /Controlling/i];
+  function parseIst(text) {
+    var map = new Map(), ignored = [];
+    text.split(/\r?\n/).forEach(function (raw) {
+      var t = raw.trim();
+      if (!t) return;
+      if (groupRe.some(function (re) { return re.test(t); })) { ignored.push(t); return; }
+      var i = t.indexOf(',');
+      if (i === -1) return;                             // Kopf-/Zählzeilen still überspringen
+      var nn = t.slice(0, i).trim(), vn = t.slice(i + 1).trim();
+      if (!nn || !vn) return;
+      var k = keyOf(vn, nn);
+      if (!map.has(k)) map.set(k, { vorname: vn, nachname: nn });
+    });
+    return { map: map, ignored: ignored };
+  }
+
+  // ---- Vergleich ----
+  function el(id) { return document.getElementById(id); }
+  function personLi(p, mark) {
+    var li = document.createElement('li');
+    var m = document.createElement('span'); m.className = 'mark'; m.textContent = mark;
+    var sn = document.createElement('span'); sn.className = 'sn'; sn.textContent = p.nachname;
+    var vn = document.createElement('span'); vn.className = 'vn'; vn.textContent = p.vorname;
+    li.appendChild(m); li.appendChild(sn); li.appendChild(vn);
+    return li;
+  }
+  function fill(listEl, arr, mark) {
+    listEl.innerHTML = '';
+    if (!arr.length) { var d = document.createElement('div'); d.className = 'empty'; d.textContent = '— keine —'; listEl.appendChild(d); return; }
+    arr.sort(function (a, b) { return (a.nachname + a.vorname).localeCompare(b.nachname + b.vorname, 'de'); });
+    arr.forEach(function (p) { listEl.appendChild(personLi(p, mark)); });
+  }
+
+  var lastAdd = [], lastRem = [];
+
+  function run() {
+    var errEl = el('err'); errEl.textContent = '';
+    var soll = parseSoll(el('soll').value);
+    var istR = parseIst(el('ist').value);
+    var ist = istR.map;
+
+    if (soll.size === 0) { errEl.textContent = 'Soll-Liste leer oder nicht erkannt — bitte die Tabelle oben einfügen.'; return; }
+    if (ist.size === 0) { errEl.textContent = 'Ist-Liste leer oder nicht erkannt — bitte die Gruppenliste unten einfügen.'; return; }
+
+    var add = [], rem = [], keep = [];
+    soll.forEach(function (p, k) { (ist.has(k) ? keep : add).push(p); });
+    ist.forEach(function (p, k) { if (!soll.has(k)) rem.push(p); });
+
+    lastAdd = add.slice(); lastRem = rem.slice();
+
+    el('tAdd').textContent = add.length; el('cAdd').textContent = add.length;
+    el('tRem').textContent = rem.length; el('cRem').textContent = rem.length;
+    el('tKeep').textContent = keep.length; el('cKeep').textContent = keep.length;
+    el('tIgn').textContent = istR.ignored.length; el('cIgn').textContent = istR.ignored.length;
+
+    fill(el('listAdd'), add, '+');
+    fill(el('listRem'), rem, '−');
+    fill(el('listKeep'), keep, '=');
+
+    var ig = el('listIgn'); ig.innerHTML = '';
+    if (!istR.ignored.length) { ig.innerHTML = '<div class="empty" style="width:100%">— keine —</div>'; }
+    else istR.ignored.forEach(function (g) { var s = document.createElement('span'); s.className = 'tag'; s.textContent = g; ig.appendChild(s); });
+
+    el('results').hidden = false;
+    el('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  // ---- Kopieren ----
+  var toast = el('toast'), toastT;
+  function showToast(msg) {
+    toast.textContent = msg; toast.classList.add('show');
+    clearTimeout(toastT); toastT = setTimeout(function () { toast.classList.remove('show'); }, 1600);
+  }
+  function copyNames(arr) {
+    if (!arr.length) { showToast('Nichts zu kopieren'); return; }
+    var txt = arr.slice().sort(function (a, b) { return (a.nachname + a.vorname).localeCompare(b.nachname + b.vorname, 'de'); })
+                 .map(function (p) { return p.vorname + ' ' + p.nachname; }).join('\n');
+    var done = function () { showToast(arr.length + ' Namen kopiert'); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(done, function () { fallbackCopy(txt); done(); });
+    else { fallbackCopy(txt); done(); }
+  }
+  function fallbackCopy(txt) {
+    var ta = document.createElement('textarea'); ta.value = txt; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); } catch (e) {} document.body.removeChild(ta);
+  }
+
+  el('run').addEventListener('click', run);
+  el('copyAdd').addEventListener('click', function () { copyNames(lastAdd); });
+  el('copyRem').addEventListener('click', function () { copyNames(lastRem); });
+  el('clear').addEventListener('click', function () {
+    el('soll').value = ''; el('ist').value = ''; el('results').hidden = true; el('err').textContent = '';
+    el('soll').focus();
+  });
+
+  // ---- Beispiel (kohärenter Mini-Datensatz) ----
+  var T = '\t';
+  var demoSoll = [
+    ['Vorname', 'Nachname', 'Funktion', 'Zuständigkeitsbereich'].join(T),
+    ['Kati', 'Ackermann', 'SB Leistungsgewährung', 'Coswig Mitte (2202)'].join(T),
+    'A - L',
+    ['GBO - Team 2', '4212', 'C 0.36', 'RBL (Dresdner Str. 78c)'].join(T),
+    ['Heike', 'Däbritz', 'SB Leistungsgewährung', 'Hirschstein (3802)'].join(T),
+    'Riesa Weida (3814)',
+    'A - R',
+    ['GBO - Team 8', '4355', '124', 'RIE (H.-Heine-Str.)'].join(T),
+    ['Antje', 'Noack genannt Gräfe', 'SB Leistungsgewährung', 'Meißen Stadtmitte (1301)'].join(T),
+    'Schl - Z',
+    ['GBO - Team 3', '4346', 'C-3.05', 'MEI (Loosestr. 17/19)'].join(T),
+    ['Leslie Jenny', 'Tamayo', 'SB Leistungsgewährung', 'Coswig Spitzgrund (2201)'].join(T),
+    'A - G',
+    ['GBO - Team 2', '4237', 'C 0.27', 'RBL (Dresdner Str. 78c)'].join(T),
+    ['Christine', 'König', 'SB Leistungsgewährung', 'Meißen (ofW) (1305)'].join(T),
+    ['GBO - Team 3', '4336', 'C-2.03', 'MEI (Loosestr. 17/19)'].join(T),
+    ['Doreen', 'Hofmann', 'SB Leistungsgewährung', 'Riesa Innenstadt (3601)'].join(T),
+    ['GBO - Team 6', '4153', '233', 'RIE (H.-Heine-Str.)'].join(T),
+    ['Sophie', 'Sommer', 'SB Leistungsgewährung', 'Diera-Zehren (1107)'].join(T),
+    ['GBO - Team 1', '4790', 'B-1.03', 'GRH (Hermannstr. 30-34)'].join(T)
+  ].join('\n');
+  var demoIst = [
+    'Liste_Jobcenter_Leistung',
+    'Anzahl Einträge: 8letzte Änderung: 24.07.2026 09:23:44',
+    'Ackermann, Kati',
+    'Däbritz, Heike',
+    'Noack genannt Gräfe, Antje',
+    'Tamayo, Leslie Jenny',
+    'König, Christine',
+    'Hofmann1, Doreen',
+    'JC.Controlling',
+    'Kurz, Claudia'
+  ].join('\n');
+  el('demo').addEventListener('click', function () {
+    el('soll').value = demoSoll; el('ist').value = demoIst; run();
+  });
+})();
+</script>
