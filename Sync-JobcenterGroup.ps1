@@ -1,20 +1,31 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    Synchronisiert eine AD-Sicherheitsgruppe (z. B. "Liste_Jobcenter_Leistung")
-    anhand einer Excel-Liste der aktuellen Sachbearbeiter.
+    ANALYSIERT den Soll/Ist-Abgleich einer AD-Sicherheitsgruppe
+    (z. B. "Liste_Jobcenter_Leistung") gegen eine Excel-Liste und erzeugt
+    daraus einen visuellen Report + ein fertiges, pruefbares Ausfuehrungsskript.
 
 .DESCRIPTION
-    Die Excel-Datei ist die *einzige Quelle der Wahrheit* fuer den aktuellen
-    Personalstand. Das Skript liest die Liste, matcht die Personen gegen das
-    Active Directory (primaer ueber givenName + sn, mit Fallback-Strategien),
-    und gleicht die *direkten* Benutzer-Mitglieder der Gruppe ab:
-      - fehlende Personen  -> werden hinzugefuegt
-      - ueberzaehlige User -> werden entfernt
-    Verschachtelte Gruppen (nested groups) werden NIE angefasst.
+    Zwei-Phasen-Prinzip (bewusst getrennt, damit NIE versehentlich etwas passiert):
 
-    Das Skript unterstuetzt einen Dry-Run (-WhatIf) und erzeugt optional
-    einen visuellen HTML-Report (Vorher/Nachher, wer kommt/geht).
+      PHASE 1 - ANALYSE (Standard, NUR LESEND):
+        * liest die Excel-Liste (einzige Quelle der Wahrheit),
+        * matcht jede Person gegen das AD (primaer givenName + sn, mit Fallbacks),
+        * vergleicht mit den *direkten* Benutzer-Mitgliedern der Gruppe,
+        * schreibt einen HTML-Report (Vorher/Nachher) und eine CSV,
+        * erzeugt ein GENERIERTES Ausfuehrungsskript "Apply-*.ps1" mit den
+          konkreten Add-/Remove-Befehlen (aufgeloeste DNs, je 1 Zeile pro Person).
+        => Es wird NICHTS im AD veraendert.
+
+      PHASE 2 - FREIGABE & AUSFUEHRUNG (durch den Menschen):
+        * Report ansehen, Apply-Skript pruefen ("absegnen"),
+        * Apply-Skript starten -> DANN erst werden die Namen ergaenzt/entfernt.
+          (Das Apply-Skript fragt vor dem Schreiben noch einmal nach und
+           unterstuetzt selbst -WhatIf.)
+
+    Verschachtelte Gruppen (nested groups) werden NIE angefasst - nur direkte
+    Benutzer-Mitglieder. Mehrdeutige/nicht gefundene Personen werden NICHT
+    automatisiert, sondern nur zur manuellen Pruefung ausgewiesen.
 
 .PARAMETER ExcelPath
     Pfad zur .xlsx-Datei mit den Sachbearbeitern.
@@ -25,44 +36,50 @@
 .PARAMETER Server
     Optionaler Domain Controller / Domaenenname (z. B. "kreis-meissen.de").
 
+.PARAMETER OutputDir
+    Zielordner fuer Report/CSV/Apply-Skript/Log. Standard: Ordner "Sync-Output"
+    neben diesem Skript.
+
 .PARAMETER LogPath
-    Optionaler Pfad zur Logdatei. Standard: neben dem Skript mit Zeitstempel.
+    Optionaler expliziter Pfad zur Logdatei.
 
 .PARAMETER HtmlReportPath
-    Optionaler Pfad fuer den visuellen HTML-Report (Vorher/Nachher).
+    Optionaler expliziter Pfad fuer den HTML-Report.
 
-.PARAMETER WhatIf
-    Dry-Run: zeigt nur, was passieren wuerde (keine Aenderung im AD).
+.PARAMETER ApplyScriptPath
+    Optionaler expliziter Pfad fuer das generierte Ausfuehrungsskript.
 
-.EXAMPLE
-    # 1) Trockenlauf inkl. HTML-Vorschau (nichts wird geaendert)
-    .\Sync-JobcenterGroup.ps1 -ExcelPath .\Source\Liste_SachbearbeiterLeistung.xlsx `
-        -HtmlReportPath .\Report.html -WhatIf
+.PARAMETER CsvPath
+    Optionaler expliziter Pfad fuer den CSV-Export.
 
 .EXAMPLE
-    # 2) Echte Synchronisation
+    # Analyse (Standard) - liest nur, erzeugt Report + Apply-Skript:
     .\Sync-JobcenterGroup.ps1 -ExcelPath .\Source\Liste_SachbearbeiterLeistung.xlsx
 
 .EXAMPLE
-    # 3) Andere Jobcenter-Gruppe (leicht erweiterbar)
+    # Danach das generierte Skript pruefen und ausfuehren:
+    .\Sync-Output\Apply-Liste_Jobcenter_Leistung_20260724.ps1 -WhatIf   # nochmal Trockenlauf
+    .\Sync-Output\Apply-Liste_Jobcenter_Leistung_20260724.ps1           # echte Aenderung (fragt nach)
+
+.EXAMPLE
+    # Andere Jobcenter-Gruppe (leicht erweiterbar):
     .\Sync-JobcenterGroup.ps1 -ExcelPath .\Source\Liste_Vermittlung.xlsx `
         -GroupName "Liste_Jobcenter_Vermittlung"
 
 .NOTES
     ANLEITUNG / VORAUSSETZUNGEN
     ---------------------------
-    * PowerShell 5.1+ (Windows). Ausfuehrung mit einem Konto, das die Gruppe
-      aendern darf.
+    * PowerShell 5.1+ (Windows).
     * Modul "ActiveDirectory" (Teil der RSAT) muss installiert sein.
     * Zum Lesen der Excel-Datei wird EINES von beiden benoetigt:
         a) Modul "ImportExcel" (empfohlen, KEIN Excel noetig):
              Install-Module ImportExcel -Scope CurrentUser
         b) ODER lokal installiertes Microsoft Excel (COM-Fallback).
-    * Empfehlung: IMMER zuerst mit -WhatIf und -HtmlReportPath laufen lassen,
-      Report pruefen, danach ohne -WhatIf ausfuehren.
+    * Ablauf: dieses Skript ausfuehren -> Report + Apply-Skript pruefen ->
+      Apply-Skript starten. Nur das Apply-Skript veraendert das AD.
 #>
 
-[CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
+[CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
     [string]$ExcelPath,
@@ -74,10 +91,19 @@ param(
     [string]$Server,
 
     [Parameter(Mandatory = $false)]
+    [string]$OutputDir,
+
+    [Parameter(Mandatory = $false)]
     [string]$LogPath,
 
     [Parameter(Mandatory = $false)]
-    [string]$HtmlReportPath
+    [string]$HtmlReportPath,
+
+    [Parameter(Mandatory = $false)]
+    [string]$ApplyScriptPath,
+
+    [Parameter(Mandatory = $false)]
+    [string]$CsvPath
 )
 
 # --------------------------------------------------------------------------
@@ -86,12 +112,20 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-# Standard-Logpfad, falls keiner uebergeben wurde
-if (-not $LogPath) {
-    $stamp   = Get-Date -Format 'yyyyMMdd_HHmmss'
-    $baseDir = if ($PSScriptRoot) { $PSScriptRoot } else { (Get-Location).Path }
-    $LogPath = Join-Path $baseDir "Sync-Jobcenter_$stamp.log"
+# Ausgabeordner + Standardpfade (Report/CSV/Apply-Skript/Log) festlegen
+$stamp   = Get-Date -Format 'yyyyMMdd_HHmmss'
+$baseDir = if ($PSScriptRoot) { $PSScriptRoot } else { (Get-Location).Path }
+if (-not $OutputDir) { $OutputDir = Join-Path $baseDir 'Sync-Output' }
+if (-not (Test-Path -LiteralPath $OutputDir)) {
+    New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
 }
+# Fuer Dateinamen unzulaessige Zeichen der Gruppe entschaerfen
+$safeGroup = ($GroupName -replace '[^\w\-]', '_')
+
+if (-not $LogPath)         { $LogPath         = Join-Path $OutputDir "Sync_${safeGroup}_$stamp.log" }
+if (-not $HtmlReportPath)  { $HtmlReportPath  = Join-Path $OutputDir "Report_${safeGroup}_$stamp.html" }
+if (-not $CsvPath)         { $CsvPath         = Join-Path $OutputDir "Analyse_${safeGroup}_$stamp.csv" }
+if (-not $ApplyScriptPath) { $ApplyScriptPath = Join-Path $OutputDir "Apply_${safeGroup}_$stamp.ps1" }
 
 # --------------------------------------------------------------------------
 # Logging-Helfer: schreibt gleichzeitig in Konsole (farbig) und Logdatei
@@ -423,7 +457,8 @@ function New-HtmlReport {
     param(
         [string]$Path, [string]$GroupName, [bool]$DryRun,
         [object[]]$Keep, [object[]]$ToAdd, [object[]]$ToRemove,
-        [object[]]$Ambiguous, [object[]]$NotFound
+        [object[]]$Ambiguous, [object[]]$NotFound,
+        [string]$ApplyScriptPath
     )
 
     function _rows($items, $render) {
@@ -442,7 +477,7 @@ function New-HtmlReport {
     $ambRows = _rows $Ambiguous { param($x) "<tr><td class='badge warn'>? mehrdeutig</td><td>$(& $enc $x.Person.Anzeige)</td><td>$(& $enc (($x.Candidates | ForEach-Object { $_.SamAccountName }) -join ', '))</td></tr>" }
     $nfRows = _rows $NotFound  { param($x) "<tr><td class='badge miss'>x kein Treffer</td><td>$(& $enc $x.Person.Anzeige)</td><td>-</td></tr>" }
 
-    $mode = if ($DryRun) { "DRY-RUN (nichts wurde geaendert)" } else { "LIVE (Aenderungen wurden angewendet)" }
+    $mode = "ANALYSE (nur gelesen - es wurde NICHTS im AD geaendert)"
     $now  = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
 
     $html = @"
@@ -452,6 +487,8 @@ function New-HtmlReport {
  body{font-family:Segoe UI,Arial,sans-serif;margin:24px;color:#1f2933;background:#f5f7fa}
  h1{font-size:20px} h2{font-size:15px;margin-top:24px}
  .mode{display:inline-block;padding:4px 10px;border-radius:6px;background:#e3f2fd;color:#0b5cad;font-weight:600}
+ .demo{background:#fff8e1;border:1px solid #ffe082;color:#8a6d00;padding:10px 14px;border-radius:8px;margin:14px 0;font-size:13px}
+ code{background:#eef2f6;padding:1px 5px;border-radius:4px;font-family:Consolas,monospace}
  .cards{display:flex;gap:12px;flex-wrap:wrap;margin:16px 0}
  .card{flex:1;min-width:120px;background:#fff;border-radius:10px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,.08);text-align:center}
  .card .n{font-size:26px;font-weight:700} .card.add .n{color:#137333}.card.rem .n{color:#b3261e}
@@ -466,6 +503,10 @@ function New-HtmlReport {
 </style></head><body>
 <h1>AD-Gruppen-Sync &mdash; $(& $enc $GroupName)</h1>
 <p><span class='mode'>$mode</span> &nbsp; erstellt: $now</p>
+<div class='demo'><b>Naechster Schritt:</b> Diese Analyse hat nichts veraendert. Zum tatsaechlichen
+Ergaenzen/Entfernen das generierte, pruefbare Skript ausfuehren:<br>
+<code>$(& $enc $ApplyScriptPath)</code><br>
+Es fragt vor dem Schreiben noch einmal nach und unterstuetzt <code>-WhatIf</code>.</div>
 <div class='cards'>
  <div class='card add'><div class='n'>$($ToAdd.Count)</div>hinzufuegen</div>
  <div class='card rem'><div class='n'>$($ToRemove.Count)</div>entfernen</div>
@@ -483,7 +524,7 @@ function New-HtmlReport {
 <table><tr><th>Status</th><th>Person (Excel)</th><th></th></tr>$nfRows</table>
 <h2>Bereits korrekt in der Gruppe</h2>
 <table><tr><th>Status</th><th>Person (Excel)</th><th>sAMAccountName</th></tr>$keepRows</table>
-<footer>Automatisch generiert von Sync-JobcenterGroup.ps1</footer>
+<footer>Automatisch generiert von Sync-JobcenterGroup.ps1 (Analyse-Modus, nur lesend)</footer>
 </body></html>
 "@
 
@@ -491,13 +532,129 @@ function New-HtmlReport {
     Write-Log "HTML-Report geschrieben: $Path" 'OK'
 }
 
+# --------------------------------------------------------------------------
+# 4b) CSV-Export aller Kategorien (fuer Weitergabe an den Fachbereich).
+# --------------------------------------------------------------------------
+function Export-AnalyseCsv {
+    param(
+        [string]$Path,
+        [object[]]$ToAdd, [object[]]$ToRemove, [object[]]$Keep,
+        [object[]]$Ambiguous, [object[]]$NotFound
+    )
+    $rows = New-Object System.Collections.Generic.List[object]
+    foreach ($m in $ToAdd)    { $rows.Add([pscustomobject]@{ Aktion='HINZUFUEGEN'; Person=$m.Person.Anzeige; sAMAccountName=$m.User.SamAccountName; Details=$m.Strategy }) }
+    foreach ($u in $ToRemove) { $rows.Add([pscustomobject]@{ Aktion='ENTFERNEN';   Person=$u.Name;           sAMAccountName=$u.SamAccountName;      Details='nicht mehr in Excel' }) }
+    foreach ($m in $Keep)     { $rows.Add([pscustomobject]@{ Aktion='BLEIBT';       Person=$m.Person.Anzeige; sAMAccountName=$m.User.SamAccountName; Details=$m.Strategy }) }
+    foreach ($a in $Ambiguous){ $rows.Add([pscustomobject]@{ Aktion='MEHRDEUTIG';   Person=$a.Person.Anzeige; sAMAccountName='';                    Details=(($a.Candidates | ForEach-Object { $_.SamAccountName }) -join ' | ') }) }
+    foreach ($n in $NotFound) { $rows.Add([pscustomobject]@{ Aktion='KEIN_TREFFER'; Person=$n.Person.Anzeige; sAMAccountName='';                    Details='im AD nicht gefunden' }) }
+
+    $rows | Export-Csv -Path $Path -NoTypeInformation -Encoding UTF8 -Delimiter ';'
+    Write-Log "CSV-Export geschrieben: $Path" 'OK'
+}
+
+# --------------------------------------------------------------------------
+# 4c) GENERIERT das pruefbare Ausfuehrungsskript ("Apply-*.ps1").
+#     Enthaelt je eine kommentierte Zeile pro Aenderung mit aufgeloestem DN.
+#     Mehrdeutige/nicht gefundene Personen werden NICHT automatisiert,
+#     sondern nur als Kommentar zur manuellen Pruefung ausgewiesen.
+# --------------------------------------------------------------------------
+function New-ApplyScript {
+    param(
+        [string]$Path, [string]$GroupName, [string]$Server, [string]$ExcelPath,
+        [object[]]$ToAdd, [object[]]$ToRemove, [object[]]$Ambiguous, [object[]]$NotFound
+    )
+
+    # Kleiner Helfer: Strings fuer die Einbettung in einfachen Anfuehrungszeichen absichern
+    function _q([string]$s) { "'" + ($s -replace "'", "''") + "'" }
+
+    $sb = New-Object System.Text.StringBuilder
+    $nl = "`r`n"
+    [void]$sb.Append(@"
+<#
+  ============================================================================
+  AUTOMATISCH GENERIERTES AUSFUEHRUNGSSKRIPT  -  BITTE VOR DEM START PRUEFEN!
+  ----------------------------------------------------------------------------
+  Erzeugt am : $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
+  Gruppe     : $GroupName
+  Grundlage  : $ExcelPath
+  ----------------------------------------------------------------------------
+  ZUSAMMENFASSUNG:
+    Hinzufuegen : $($ToAdd.Count)
+    Entfernen   : $($ToRemove.Count)
+    (Mehrdeutig : $($Ambiguous.Count),  Kein Treffer: $($NotFound.Count)
+     -> NICHT automatisiert, siehe Kommentare weiter unten, bitte manuell klaeren)
+  ----------------------------------------------------------------------------
+  AUSFUEHREN:
+    .\$(Split-Path $Path -Leaf) -WhatIf     # nochmaliger Trockenlauf (aendert nichts)
+    .\$(Split-Path $Path -Leaf)             # echte Aenderung (fragt vorher nach)
+    .\$(Split-Path $Path -Leaf) -Force      # echte Aenderung ohne Rueckfrage
+  ============================================================================
+#>
+[CmdletBinding(SupportsShouldProcess = `$true, ConfirmImpact = 'High')]
+param([switch]`$Force)
+
+`$ErrorActionPreference = 'Stop'
+Import-Module ActiveDirectory -ErrorAction Stop
+
+`$Group    = $(_q $GroupName)
+`$adParams = @{}
+$(if ($Server) { "`$adParams['Server'] = $(_q $Server)" } else { "# (kein -Server gesetzt; Standard-DC wird verwendet)" })
+
+# Sicherheitsabfrage vor echten Aenderungen (entfaellt bei -WhatIf oder -Force)
+if (-not `$Force -and -not `$WhatIfPreference) {
+    Write-Host ''
+    Write-Host "Es werden $($ToAdd.Count) Benutzer HINZUGEFUEGT und $($ToRemove.Count) ENTFERNT." -ForegroundColor Yellow
+    `$answer = Read-Host "Wirklich auf Gruppe '`$Group' anwenden? (ja/nein)"
+    if (`$answer -ne 'ja') { Write-Host 'Abgebrochen - nichts geaendert.' -ForegroundColor Cyan; return }
+}
+
+"@)
+
+    # --- HINZUFUEGEN ---
+    [void]$sb.Append("# --------------------------- HINZUFUEGEN ---------------------------$nl")
+    if ($ToAdd.Count -eq 0) {
+        [void]$sb.Append("# (nichts hinzuzufuegen)$nl")
+    } else {
+        foreach ($m in $ToAdd) {
+            $dn   = $m.User.DistinguishedName
+            $note = "$($m.Person.Anzeige) ($($m.User.SamAccountName))"
+            [void]$sb.Append("Add-ADGroupMember -Identity `$Group -Members $(_q $dn) @adParams   # + $note$nl")
+        }
+    }
+
+    # --- ENTFERNEN ---
+    [void]$sb.Append("$nl# ---------------------------- ENTFERNEN ----------------------------$nl")
+    if ($ToRemove.Count -eq 0) {
+        [void]$sb.Append("# (nichts zu entfernen)$nl")
+    } else {
+        foreach ($u in $ToRemove) {
+            $note = "$($u.Name) ($($u.SamAccountName))"
+            [void]$sb.Append("Remove-ADGroupMember -Identity `$Group -Members $(_q $u.DistinguishedName) -Confirm:`$false @adParams   # - $note$nl")
+        }
+    }
+
+    # --- Nur zur Information: nicht automatisierte Faelle ---
+    [void]$sb.Append("$nl# ------- MANUELL PRUEFEN (NICHT automatisiert) -------$nl")
+    foreach ($a in $Ambiguous) {
+        $cands = ($a.Candidates | ForEach-Object { $_.SamAccountName }) -join ', '
+        [void]$sb.Append("# MEHRDEUTIG : $($a.Person.Anzeige) -> Kandidaten: $cands$nl")
+    }
+    foreach ($n in $NotFound) {
+        [void]$sb.Append("# KEIN TREFFER: $($n.Person.Anzeige)$nl")
+    }
+    [void]$sb.Append("$nl Write-Host 'Fertig.' -ForegroundColor Green$nl")
+
+    $sb.ToString() | Out-File -FilePath $Path -Encoding UTF8
+    Write-Log "Ausfuehrungsskript generiert: $Path" 'OK'
+}
+
 # ==========================================================================
 #  HAUPTPROGRAMM
 # ==========================================================================
 try {
-    Write-Log "=== Start Sync fuer Gruppe '$GroupName' ===" 'INFO'
+    Write-Log "=== Start ANALYSE fuer Gruppe '$GroupName' ===" 'INFO'
     Write-Log "Excel: $ExcelPath" 'INFO'
-    if ($WhatIfPreference) { Write-Log "MODUS: DRY-RUN (-WhatIf) - es wird nichts geaendert." 'WARN' }
+    Write-Log "MODUS: ANALYSE (nur lesend) - es wird NICHTS im AD geaendert." 'WARN'
 
     # AD-Modul laden
     Import-Module ActiveDirectory -ErrorAction Stop
@@ -569,46 +726,43 @@ try {
         if (-not $desiredUsers.ContainsKey($sam)) { $toRemove.Add($currentSams[$sam]) }
     }
 
-    # --- Aenderungen anwenden (respektiert -WhatIf ueber ShouldProcess) ---
-    foreach ($m in $toAdd) {
-        $u = $m.User
-        if ($PSCmdlet.ShouldProcess("$($u.SamAccountName) ($($m.Person.Anzeige))", "Zu Gruppe '$GroupName' HINZUFUEGEN")) {
-            Add-ADGroupMember -Identity $GroupName -Members $u.DistinguishedName @adParams
-            Write-Log ("HINZUGEFUEGT: {0} ({1})" -f $u.SamAccountName, $m.Person.Anzeige) 'ADD'
-        } else {
-            Write-Log ("[WhatIf] wuerde hinzufuegen: {0} ({1})" -f $u.SamAccountName, $m.Person.Anzeige) 'ADD'
-        }
-    }
+    # --- KEINE AD-Aenderung hier! Nur Artefakte fuer die Freigabe erzeugen. ---
 
-    foreach ($u in $toRemove) {
-        if ($PSCmdlet.ShouldProcess("$($u.SamAccountName) ($($u.Name))", "Aus Gruppe '$GroupName' ENTFERNEN")) {
-            Remove-ADGroupMember -Identity $GroupName -Members $u.DistinguishedName -Confirm:$false @adParams
-            Write-Log ("ENTFERNT: {0} ({1})" -f $u.SamAccountName, $u.Name) 'REMOVE'
-        } else {
-            Write-Log ("[WhatIf] wuerde entfernen: {0} ({1})" -f $u.SamAccountName, $u.Name) 'REMOVE'
-        }
-    }
+    # Generiertes Ausfuehrungsskript (die eigentliche Schreiblogik zum "Absegnen")
+    New-ApplyScript -Path $ApplyScriptPath -GroupName $GroupName -Server $Server -ExcelPath $ExcelPath `
+        -ToAdd $toAdd.ToArray() -ToRemove $toRemove.ToArray() `
+        -Ambiguous $ambiguous.ToArray() -NotFound $notFound.ToArray()
 
-    # --- Optionaler HTML-Report ---
-    if ($HtmlReportPath) {
-        New-HtmlReport -Path $HtmlReportPath -GroupName $GroupName -DryRun ([bool]$WhatIfPreference) `
-            -Keep $toKeep.ToArray() -ToAdd $toAdd.ToArray() -ToRemove $toRemove.ToArray() `
-            -Ambiguous $ambiguous.ToArray() -NotFound $notFound.ToArray()
-    }
+    # HTML-Report (Vorher/Nachher)
+    New-HtmlReport -Path $HtmlReportPath -GroupName $GroupName -DryRun $true `
+        -Keep $toKeep.ToArray() -ToAdd $toAdd.ToArray() -ToRemove $toRemove.ToArray() `
+        -Ambiguous $ambiguous.ToArray() -NotFound $notFound.ToArray() `
+        -ApplyScriptPath $ApplyScriptPath
+
+    # CSV-Export (fuer Weitergabe / Ablage)
+    Export-AnalyseCsv -Path $CsvPath `
+        -ToAdd $toAdd.ToArray() -ToRemove $toRemove.ToArray() -Keep $toKeep.ToArray() `
+        -Ambiguous $ambiguous.ToArray() -NotFound $notFound.ToArray()
 
     # --- Zusammenfassung ---
-    Write-Log "==================== ZUSAMMENFASSUNG ====================" 'INFO'
+    Write-Log "==================== ZUSAMMENFASSUNG (ANALYSE) ====================" 'INFO'
     Write-Log ("Excel-Personen gesamt : {0}" -f $persons.Count)      'INFO'
     Write-Log ("Eindeutig gematcht    : {0}" -f $matched.Count)      'OK'
-    Write-Log ("Hinzugefuegt          : {0}" -f $toAdd.Count)        'ADD'
-    Write-Log ("Entfernt              : {0}" -f $toRemove.Count)     'REMOVE'
+    Write-Log ("Wuerde hinzufuegen    : {0}" -f $toAdd.Count)        'ADD'
+    Write-Log ("Wuerde entfernen      : {0}" -f $toRemove.Count)     'REMOVE'
     Write-Log ("Unveraendert (bleibt) : {0}" -f $toKeep.Count)       'INFO'
     Write-Log ("Mehrdeutig            : {0}" -f $ambiguous.Count)    'WARN'
     Write-Log ("Nicht gefunden        : {0}" -f $notFound.Count)     'WARN'
-    Write-Log "=========================================================" 'INFO'
-    if ($WhatIfPreference) { Write-Log "DRY-RUN beendet - es wurde NICHTS geaendert." 'WARN' }
-    Write-Log "Logdatei: $LogPath" 'INFO'
-    Write-Log "=== Ende ===" 'OK'
+    Write-Log "==================================================================" 'INFO'
+    Write-Log "Es wurde NICHTS im AD geaendert (reine Analyse)." 'WARN'
+    Write-Log "" 'INFO'
+    Write-Log "NAECHSTE SCHRITTE:" 'INFO'
+    Write-Log ("  1) Report ansehen : {0}" -f $HtmlReportPath) 'INFO'
+    Write-Log ("  2) Skript pruefen : {0}" -f $ApplyScriptPath) 'INFO'
+    Write-Log ("  3) Ausfuehren     : `"{0}`" -WhatIf   (Test), danach ohne -WhatIf" -f $ApplyScriptPath) 'INFO'
+    Write-Log ("CSV-Export          : {0}" -f $CsvPath) 'INFO'
+    Write-Log ("Logdatei            : {0}" -f $LogPath) 'INFO'
+    Write-Log "=== Ende Analyse ===" 'OK'
 }
 catch {
     Write-Log ("ABBRUCH: {0}" -f $_.Exception.Message) 'ERROR'
