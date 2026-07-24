@@ -33,6 +33,12 @@
 .PARAMETER GroupName
     Name der Ziel-AD-Gruppe. Standard: "Liste_Jobcenter_Leistung".
 
+.PARAMETER WorksheetName
+    Name des zu verwendenden Arbeitsblatts (Tabellenblatt) in der xlsx.
+    Wird der Parameter NICHT angegeben und die Datei hat mehrere Blaetter,
+    fragt das Skript interaktiv per Menue nach. Fuer unbeaufsichtigte Laeufe
+    (Aufgabenplaner) diesen Parameter immer setzen.
+
 .PARAMETER Server
     Optionaler Domain Controller / Domaenenname (z. B. "kreis-meissen.de").
 
@@ -62,6 +68,11 @@
     .\Sync-Output\Apply-Liste_Jobcenter_Leistung_20260724.ps1           # echte Aenderung (fragt nach)
 
 .EXAMPLE
+    # Bestimmtes Arbeitsblatt direkt waehlen (kein interaktives Menue):
+    .\Sync-JobcenterGroup.ps1 -ExcelPath .\Source\Beispiel_SachbearbeiterListe.xlsx `
+        -WorksheetName "Leistung"
+
+.EXAMPLE
     # Andere Jobcenter-Gruppe (leicht erweiterbar):
     .\Sync-JobcenterGroup.ps1 -ExcelPath .\Source\Liste_Vermittlung.xlsx `
         -GroupName "Liste_Jobcenter_Vermittlung"
@@ -86,6 +97,9 @@ param(
 
     [Parameter(Mandatory = $false)]
     [string]$GroupName = 'Liste_Jobcenter_Leistung',
+
+    [Parameter(Mandatory = $false)]
+    [string]$WorksheetName,
 
     [Parameter(Mandatory = $false)]
     [string]$Server,
@@ -224,29 +238,103 @@ function Get-GivenNameVariants {
 }
 
 # --------------------------------------------------------------------------
+# Liefert die Namen aller Arbeitsblaetter der Datei (fuer beide Lese-Engines).
+# --------------------------------------------------------------------------
+function Get-WorksheetNames {
+    param([string]$Path, [switch]$UseImportExcel)
+
+    if ($UseImportExcel) {
+        Import-Module ImportExcel -ErrorAction Stop
+        return @(Get-ExcelSheetInfo -Path $Path | Select-Object -ExpandProperty Name)
+    }
+
+    # COM-Variante: Arbeitsblattnamen auslesen
+    $excel = $null; $wb = $null
+    try {
+        $excel = New-Object -ComObject Excel.Application
+        $excel.Visible = $false; $excel.DisplayAlerts = $false
+        $wb = $excel.Workbooks.Open((Resolve-Path $Path).Path, $null, $true)
+        $names = @()
+        foreach ($ws in $wb.Worksheets) { $names += [string]$ws.Name }
+        return $names
+    }
+    finally {
+        if ($wb)    { $wb.Close($false) | Out-Null }
+        if ($excel) { $excel.Quit() | Out-Null }
+        [GC]::Collect(); [GC]::WaitForPendingFinalizers()
+    }
+}
+
+# --------------------------------------------------------------------------
+# Bestimmt das zu verwendende Arbeitsblatt:
+#   * -WorksheetName gesetzt  -> exakt dieses (Fehler, falls nicht vorhanden)
+#   * genau 1 Blatt           -> dieses
+#   * mehrere Blaetter        -> interaktives Auswahlmenue (Standard: 1)
+# --------------------------------------------------------------------------
+function Select-Worksheet {
+    param([string[]]$Sheets, [string]$Requested)
+
+    if (-not $Sheets -or $Sheets.Count -eq 0) {
+        throw "Die Excel-Datei enthaelt keine lesbaren Arbeitsblaetter."
+    }
+
+    # Explizit angefordertes Blatt (unabhaengig von Gross-/Kleinschreibung)
+    if ($Requested) {
+        $match = $Sheets | Where-Object { $_ -ieq $Requested } | Select-Object -First 1
+        if (-not $match) {
+            throw ("Arbeitsblatt '{0}' nicht gefunden. Vorhanden: {1}" -f $Requested, ($Sheets -join ', '))
+        }
+        return $match
+    }
+
+    if ($Sheets.Count -eq 1) { return $Sheets[0] }
+
+    # Mehrere Blaetter, kein Parameter -> interaktiv fragen
+    Write-Host ''
+    Write-Host 'Die Datei enthaelt mehrere Arbeitsblaetter:' -ForegroundColor Cyan
+    for ($i = 0; $i -lt $Sheets.Count; $i++) {
+        Write-Host ('  [{0}] {1}' -f ($i + 1), $Sheets[$i])
+    }
+    $choice = Read-Host "Welches Blatt verwenden? (1-$($Sheets.Count), Enter = 1)"
+    if ([string]::IsNullOrWhiteSpace($choice)) { return $Sheets[0] }
+
+    $idx = 0
+    if ([int]::TryParse($choice, [ref]$idx) -and $idx -ge 1 -and $idx -le $Sheets.Count) {
+        return $Sheets[$idx - 1]
+    }
+    throw "Ungueltige Auswahl: '$choice'. Bitte eine Zahl zwischen 1 und $($Sheets.Count) angeben."
+}
+
+# --------------------------------------------------------------------------
 # 1) Excel einlesen -> Liste von Personen (nur Zeilen MIT Vor-/Nachname).
 #    Leere Namenszeilen gehoeren zum vorherigen MA (weitere Zustaendigkeits-
 #    bereiche) und stellen KEINE neue Person dar -> werden uebersprungen.
 # --------------------------------------------------------------------------
 function Import-SachbearbeiterListe {
-    param([string]$Path)
+    param([string]$Path, [string]$WorksheetName)
 
     if (-not (Test-Path -LiteralPath $Path)) {
         throw "Excel-Datei nicht gefunden: $Path"
     }
 
     $rows = $null
+    $useImportExcel = [bool](Get-Module -ListAvailable -Name ImportExcel)
 
-    # Bevorzugt: ImportExcel (kein Excel/COM noetig)
-    if (Get-Module -ListAvailable -Name ImportExcel) {
+    # 1) Verfuegbare Arbeitsblaetter ermitteln und passendes Blatt bestimmen
+    $sheets = Get-WorksheetNames -Path $Path -UseImportExcel:$useImportExcel
+    $sheet  = Select-Worksheet -Sheets $sheets -Requested $WorksheetName
+    Write-Log "Verwende Arbeitsblatt: '$sheet' (von $($sheets.Count) verfuegbaren)." 'INFO'
+
+    # 2) Zeilen aus dem gewaehlten Blatt lesen
+    if ($useImportExcel) {
         Import-Module ImportExcel -ErrorAction Stop
         Write-Log "Lese Excel via Modul 'ImportExcel'." 'INFO'
-        $rows = Import-Excel -Path $Path
+        $rows = Import-Excel -Path $Path -WorksheetName $sheet
     }
     else {
         # Fallback: Excel-COM. Nur nutzbar, wenn Excel lokal installiert ist.
         Write-Log "Modul 'ImportExcel' nicht gefunden -> versuche Excel-COM-Fallback." 'WARN'
-        $rows = Import-ExcelViaCom -Path $Path
+        $rows = Import-ExcelViaCom -Path $Path -WorksheetName $sheet
     }
 
     # Tolerant eine Spalte lesen (Header-Schreibweise/Whitespace kann variieren);
@@ -290,15 +378,17 @@ function Import-SachbearbeiterListe {
 # COM-Fallback zum Lesen der ersten Tabelle (Header in Zeile 1).
 # --------------------------------------------------------------------------
 function Import-ExcelViaCom {
-    param([string]$Path)
+    param([string]$Path, [string]$WorksheetName)
 
-    $excel = $null; $wb = $null
+    # Alle in 'finally' referenzierten Variablen vorab initialisieren (StrictMode)
+    $excel = $null; $wb = $null; $ws = $null
     try {
         $excel = New-Object -ComObject Excel.Application
         $excel.Visible = $false
         $excel.DisplayAlerts = $false
         $wb = $excel.Workbooks.Open((Resolve-Path $Path).Path, $null, $true) # ReadOnly
-        $ws = $wb.Worksheets.Item(1)
+        # Gewuenschtes Blatt oder ersatzweise das erste
+        $ws = if ($WorksheetName) { $wb.Worksheets.Item($WorksheetName) } else { $wb.Worksheets.Item(1) }
         $used = $ws.UsedRange
         $data = $used.Value2   # 2D-Array [row, col]
 
@@ -663,8 +753,8 @@ try {
     $adParams = @{}
     if ($Server) { $adParams['Server'] = $Server }
 
-    # --- Excel einlesen ---
-    $persons = Import-SachbearbeiterListe -Path $ExcelPath
+    # --- Excel einlesen (inkl. Auswahl des Arbeitsblatts) ---
+    $persons = Import-SachbearbeiterListe -Path $ExcelPath -WorksheetName $WorksheetName
     Write-Log ("Excel gelesen: {0} eindeutige Personen." -f $persons.Count) 'OK'
 
     # --- Zielgruppe pruefen ---
