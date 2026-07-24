@@ -1,3 +1,7 @@
+---
+created: 2026-07-24T11:18
+updated: 2026-07-24T11:18
+---
 # Sync-JobcenterGroup
 
 Synchronisiert eine AD-Sicherheitsgruppe (z. B. **`Liste_Jobcenter_Leistung`**) anhand
