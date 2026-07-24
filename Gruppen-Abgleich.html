@@ -75,6 +75,9 @@
   .field .num { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 6px; background: var(--accent-weak); color: var(--accent); font-size: 12px; font-weight: 700; margin-right: 8px; vertical-align: -3px; }
   .field label { font-weight: 650; font-size: 14.5px; }
   .field .hint { color: var(--muted); font-size: 12.5px; margin-top: 3px; }
+  .field .src { display: inline-flex; align-items: center; gap: 5px; margin-top: 7px; font-size: 12.5px; font-weight: 600; color: var(--accent); text-decoration: none; border-bottom: 1px solid transparent; width: fit-content; }
+  .field .src:hover { border-bottom-color: var(--accent); }
+  .field .src:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
   textarea {
     border: 0; outline: 0; resize: vertical; width: 100%; min-height: 200px;
     padding: 13px 16px; background: transparent; color: var(--text);
@@ -164,6 +167,7 @@
       <div class="head">
         <label for="soll"><span class="num">1</span>Soll — Sachbearbeiter-Liste</label>
         <div class="hint">Ganze Tabelle einfügen (mit Kopf­zeile, Tabs, Mehrfachzeilen). Nur Zeilen mit Vor- und Nachname zählen.</div>
+        <a class="src" href="https://vegz2/mdb/index2.php" target="_blank" rel="noopener noreferrer">↗ Soll-Liste öffnen (MDB)</a>
       </div>
       <textarea id="soll" spellcheck="false" placeholder="Vorname&#9;Nachname&#9;Funktion&#9;…&#10;Kati&#9;Ackermann&#9;SB Leistungsgewährung&#9;Coswig Mitte (2202)&#10;A - L&#10;GBO - Team 2&#9;4212&#9;C 0.36&#9;RBL …"></textarea>
     </div>
@@ -171,6 +175,7 @@
       <div class="head">
         <label for="ist"><span class="num">2</span>Ist — aktuelle Gruppen­mitglieder</label>
         <div class="hint">Liste aus dem Tool einfügen (Format „Nachname, Vorname“). Gruppen wie <span style="font-family:var(--mono)">Liste_*</span> / <span style="font-family:var(--mono)">JC.*</span> werden ignoriert.</div>
+        <a class="src" href="https://vegz2/open/benutzergruppen.php?Typ=1&amp;Plausi=no#Liste_Jobcenter_Leistung" target="_blank" rel="noopener noreferrer">↗ Ist-Liste öffnen (Benutzergruppen)</a>
       </div>
       <textarea id="ist" spellcheck="false" placeholder="Liste_Jobcenter_Leistung&#10;Anzahl Einträge: 82 …&#10;Ackermann, Kati&#10;Adam, Ina&#10;…"></textarea>
     </div>
