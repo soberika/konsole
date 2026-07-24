@@ -1,0 +1,83 @@
+﻿Aktion;Vorname;Nachname
+HINZUFUEGEN;Alexandra;Georgi
+HINZUFUEGEN;Franziska;Gurk
+HINZUFUEGEN;Claudia;Hirschnitz
+HINZUFUEGEN;Doreen;Hofmann
+HINZUFUEGEN;Sabrina;Kientopf
+HINZUFUEGEN;Beatrice;Knobloch
+HINZUFUEGEN;Christine;König
+HINZUFUEGEN;Anja;Lamm
+HINZUFUEGEN;Berit;Orisch
+HINZUFUEGEN;Yvonne;Poser
+HINZUFUEGEN;Jenny;Schoppan
+HINZUFUEGEN;Kathleen;Schulz
+HINZUFUEGEN;Sophie;Sommer
+HINZUFUEGEN;Leslie Jenny;Tamayo
+HINZUFUEGEN;Janet;Thomas
+ENTFERNEN;Lisa;Günther
+ENTFERNEN;Anne;Haupt
+ENTFERNEN;Ines;Kleinstück
+ENTFERNEN;Claudia;Kurz
+ENTFERNEN;Anne;Marschat
+ENTFERNEN;Kerstin;Mierisch
+ENTFERNEN;Sandy;Schaaf-Wippich1
+ENTFERNEN;Susanne;Wachsmuth
+BLEIBT;Kati;Ackermann
+BLEIBT;Ina;Adam
+BLEIBT;Heike;Däbritz
+BLEIBT;Britta;Eisleben
+BLEIBT;Joana;Fischer
+BLEIBT;Ariane;Franze
+BLEIBT;Kathrin;Grille
+BLEIBT;Jürgen;Grimmer
+BLEIBT;Ramona;Grünberg
+BLEIBT;Ramona;Gärtner
+BLEIBT;Kathleen;Hegner
+BLEIBT;Andrea;Heinze
+BLEIBT;Marie-Christin;Hornemann
+BLEIBT;Tina;Jahn
+BLEIBT;Jessica;Jendroßek
+BLEIBT;Karin;Junker
+BLEIBT;Janett;Kowalewicz
+BLEIBT;Regine;Krause
+BLEIBT;Diana;König
+BLEIBT;Carola;Lehmann
+BLEIBT;Katrin;Leuteritz
+BLEIBT;Susanne;Lindner
+BLEIBT;Ines;Lippert
+BLEIBT;Marion;Lück
+BLEIBT;Tobias;Marga
+BLEIBT;Katrin;May
+BLEIBT;Anne;Mehnert
+BLEIBT;Steffi;Meißner
+BLEIBT;Ronny;Mende
+BLEIBT;Andrea;Möbius
+BLEIBT;Janett;Nitschke
+BLEIBT;Antje;Noack genannt Gräfe
+BLEIBT;Mareen;Ortlepp
+BLEIBT;Romy;Peuker
+BLEIBT;Andrea;Pöschel
+BLEIBT;Ina;Schirmer
+BLEIBT;Sindy;Schleicher
+BLEIBT;Franziska;Schmidt
+BLEIBT;Katja;Schmidt
+BLEIBT;Heike;Schwetlick
+BLEIBT;Ines;Schöne
+BLEIBT;Veronika;Simon
+BLEIBT;Anett;Spinger
+BLEIBT;Beate;Teichgräber
+BLEIBT;Katja;Thiel
+BLEIBT;Uwe;Wache
+BLEIBT;Silke;Wanka
+BLEIBT;Silvana;Wild
+BLEIBT;Michaela;Winkler
+BLEIBT;Nadine;Winkler
+BLEIBT;Sarah;Wolf
+BLEIBT;Sandra;Wollschläger
+BLEIBT;Lea;Währisch
+BLEIBT;Anne;Zaulig
+IGNORIERT (Gruppe/Konto);JC.Controlling;
+IGNORIERT (Gruppe/Konto);Liste_Jobcenter_1.SB;
+IGNORIERT (Gruppe/Konto);Liste_Jobcenter_EinheitlicheRechtsanwendung;
+IGNORIERT (Gruppe/Konto);Liste_Jobcenter_SB_Springer;
+IGNORIERT (Gruppe/Konto);Liste_Jobcenter_Teamleiter;
